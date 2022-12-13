@@ -1,10 +1,13 @@
-#ifndef PCH_H
-#define PCH_H
+#ifndef PCH_HPP
+#define PCH_HPP
 
 #include <cassert>
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <type_traits>
 
-#endif //PCH_H
+#include <boost/endian/conversion.hpp>
+
+#endif //PCH_HPP

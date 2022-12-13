@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <type_traits>
 #include <boost/endian/conversion.hpp>
 
 #include "Utils.hpp"
@@ -32,7 +33,7 @@ public:
 
 	uint32_t GetSize() const
 	{
-		return Buffer.size();
+		return static_cast<uint32_t>(Buffer.size());
 	}
 
 	uint32_t GetWriteOffset() const
@@ -62,115 +63,46 @@ public:
 		Buffer.reserve(size);
 	}
 
-	void WriteSize(uint32_t obj);
-
 	template <typename T>
-	void Write(T obj)
+	void Write(const T& obj)
 	{
-		static_assert(std::is_arithmetic_v<T>);
-
-		std::unique_lock lock(Mutex, std::defer_lock);
-		if (ThreadSafe)
-			lock.lock();
-
-		if (!Utils::IsLittleEndian)
-		{
-			boost::endian::endian_reverse_inplace(obj);
-		}
-
-		const uint32_t length = sizeof(T);
-		GrowIfNeeded(length);
-		std::memcpy(Buffer.data() + WriteOffset, &obj, length);
-		WriteOffset += length;
+		Write(&obj, 1);
 	}
 
 	template <typename T>
 	void Write(const std::vector<T>& obj)
 	{
-		std::unique_lock lock(Mutex, std::defer_lock);
-		if (ThreadSafe)
-			lock.lock();
+		Write(static_cast<uint32_t>(obj.size()));
 
-		const uint32_t size = obj.size();
-		WriteSize(size);
-
-		const uint32_t length = size * sizeof(T);
-		GrowIfNeeded(length);
-		for (auto o : obj)
-		{
-			Write(o);
-		}
+		WriteRaw(obj);
 	}
 
 	template <typename T>
 	void WriteRaw(const std::vector<T>& obj)
 	{
-		std::unique_lock lock(Mutex, std::defer_lock);
-		if (ThreadSafe)
-			lock.lock();
-
-		const uint32_t length = obj.size() * sizeof(T);
-		GrowIfNeeded(length);
-		for (auto o : obj)
-		{
-			Write(o);
-		}
+		Write(obj.data(), static_cast<uint32_t>(obj.size()));
 	}
 
 	void Write(const std::string& obj);
 
 	void WriteRaw(const std::string& obj);
 
-	bool ReadSize(uint32_t& obj);
-
 	template <typename T>
 	bool Read(T& obj)
 	{
-		static_assert(std::is_arithmetic_v<T>);
-
-		std::unique_lock lock(Mutex, std::defer_lock);
-		if (ThreadSafe)
-			lock.lock();
-
-		const uint32_t length = sizeof(T);
-
-		const uint32_t final_offset = ReadOffset + length;
-		if (Buffer.size() < final_offset)
-			return false;
-
-		std::memcpy(&obj, Buffer.data() + ReadOffset, length);
-		if (!Utils::IsLittleEndian)
-		{
-			boost::endian::endian_reverse_inplace(obj);
-		}
-		ReadOffset = final_offset;
-
-		return true;
+		return Read(&obj, 1);
 	}
 
 	template <typename T>
 	bool Read(std::vector<T>& obj)
 	{
-		std::unique_lock lock(Mutex, std::defer_lock);
-		if (ThreadSafe)
-			lock.lock();
-
 		uint32_t size = 0;
-		if (!ReadSize(size))
-			return false;
-
-		const uint32_t length = size * sizeof(T);
-
-		const uint32_t final_offset = ReadOffset + length;
-		if (Buffer.size() < final_offset)
+		if (!Read(size))
 			return false;
 
 		obj.resize(size);
-		for (uint32_t i = 0; i < size; i++)
-		{
-			if (!Read(obj[i]))
-				return false;
-		}
+		if (!Read(obj.data(), size))
+			return false;
 
 		return true;
 	}
@@ -188,6 +120,56 @@ private:
 	std::recursive_mutex Mutex;
 
 	static constexpr float BUFFER_GROW_FACTOR = 1.5f;
+
+	template <typename T>
+	void Write(const T* obj, uint32_t count)
+	{
+		static_assert(std::is_trivially_copyable_v<T>);
+
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
+
+		const uint32_t length = count * sizeof(T);
+		GrowIfNeeded(length);
+		std::memcpy(Buffer.data() + WriteOffset, obj, length);
+		if (!Utils::IsLittleEndian)
+		{
+			for (uint32_t i = 0; i < count; i++)
+			{
+				boost::endian::endian_reverse_inplace(reinterpret_cast<T&>(Buffer[WriteOffset + i * sizeof(T)]));
+			}
+		}
+		WriteOffset += length;
+	}
+
+	template <typename T>
+	bool Read(T* obj, uint32_t count)
+	{
+		static_assert(std::is_trivially_copyable_v<T>);
+
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
+
+		const uint32_t length = count * sizeof(T);
+
+		const uint32_t final_offset = ReadOffset + length;
+		if (Buffer.size() < final_offset)
+			return false;
+
+		std::memcpy(obj, Buffer.data() + ReadOffset, length);
+		if (!Utils::IsLittleEndian)
+		{
+			for (uint32_t i = 0; i < count; i++)
+			{
+				boost::endian::endian_reverse_inplace(reinterpret_cast<T&>(obj[i]));
+			}
+		}
+		ReadOffset = final_offset;
+
+		return true;
+	}
 
 	void GrowIfNeeded(uint32_t write_length);
 };

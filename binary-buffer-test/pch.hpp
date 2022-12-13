@@ -1,5 +1,5 @@
-#ifndef PCH_H
-#define PCH_H
+#ifndef PCH_HPP
+#define PCH_HPP
 
 #include <cstdint>
 #include <string>
@@ -7,4 +7,4 @@
 
 #include "gtest/gtest.h"
 
-#endif //PCH_H
+#endif //PCH_HPP

@@ -2,12 +2,12 @@
 #include "BinaryBuffer.hpp"
 
 BinaryBuffer::BinaryBuffer(const std::vector<uint8_t>& obj)
-	: Buffer(obj), WriteOffset(obj.size())
+	: Buffer(obj), WriteOffset(static_cast<uint32_t>(obj.size()))
 {
 }
 
 BinaryBuffer::BinaryBuffer(std::vector<uint8_t>&& obj)
-	: Buffer(std::move(obj)), WriteOffset(obj.size())
+	: Buffer(std::move(obj)), WriteOffset(static_cast<uint32_t>(obj.size()))
 {
 }
 
@@ -39,69 +39,27 @@ BinaryBuffer& BinaryBuffer::operator=(BinaryBuffer&& obj) noexcept
 	return *this;
 }
 
-void BinaryBuffer::WriteSize(uint32_t obj)
-{
-	Write(obj);
-}
-
 void BinaryBuffer::Write(const std::string& obj)
 {
-	std::unique_lock lock(Mutex, std::defer_lock);
-	if (ThreadSafe)
-		lock.lock();
+	Write(static_cast<uint32_t>(obj.size()));
 
-	const uint32_t size = obj.size();
-	WriteSize(size);
-
-	const uint32_t length = size * sizeof(std::string::value_type);
-	GrowIfNeeded(length);
-	for (auto o : obj)
-	{
-		Write(o);
-	}
+	WriteRaw(obj);
 }
 
 void BinaryBuffer::WriteRaw(const std::string& obj)
 {
-	std::unique_lock lock(Mutex, std::defer_lock);
-	if (ThreadSafe)
-		lock.lock();
-
-	const uint32_t length = obj.size();
-	GrowIfNeeded(length);
-	for (auto o : obj)
-	{
-		Write(o);
-	}
-}
-
-bool BinaryBuffer::ReadSize(uint32_t& obj)
-{
-	return Read(obj);
+	Write(obj.data(), static_cast<uint32_t>(obj.size()));
 }
 
 bool BinaryBuffer::Read(std::string& obj)
 {
-	std::unique_lock lock(Mutex, std::defer_lock);
-	if (ThreadSafe)
-		lock.lock();
-
 	uint32_t size = 0;
-	if (!ReadSize(size))
-		return false;
-
-	const uint32_t length = size * sizeof(std::string::value_type);
-
-	const uint32_t final_offset = ReadOffset + length;
-	if (Buffer.size() < final_offset)
+	if (!Read(size))
 		return false;
 
 	obj.resize(size);
-	for (uint32_t i = 0; i < size; i++)
-	{
-		if (!Read(obj[i]))
-			return false;
-	}
+	if (!Read(obj.data(), size))
+		return false;
 
 	return true;
 }
@@ -124,7 +82,11 @@ void BinaryBuffer::GrowIfNeeded(uint32_t write_length)
 	const bool resize_needed = Buffer.size() < final_length;
 
 	if (reserve_needed)
-		Buffer.reserve(final_length * BUFFER_GROW_FACTOR);
+	{
+		uint32_t final_capacility = static_cast<uint32_t>(static_cast<float>(final_length) * BUFFER_GROW_FACTOR) + 128;
+		final_capacility -= final_capacility % 64;
+		Buffer.reserve(final_capacility);
+	}
 
 	if (resize_needed)
 		Buffer.resize(final_length);
