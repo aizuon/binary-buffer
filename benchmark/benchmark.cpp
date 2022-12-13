@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 #include <utility>
-#include <streambuf>
 #include <istream>
 #include <boost/timer/timer.hpp>
 
@@ -16,9 +15,12 @@
 
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
-#include <boost/interprocess/streams/bufferstream.hpp>
+#include <sstream>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/string.hpp>
+
+#define SER_LOOP_COUNT 1'000'000
+#define LOOP_COUNT 100
 
 std::pair<std::vector<uint8_t>, size_t> bitsery_serialize()
 {
@@ -27,7 +29,7 @@ std::pair<std::vector<uint8_t>, size_t> bitsery_serialize()
 	std::vector<uint8_t> buffer;
 	bitsery::Serializer<OutputAdapter> ser(buffer);
 
-	for (int i = 0; i < 1000000; i++)
+	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
 		ser.boolValue(true);
 		ser.value1b(static_cast<int8_t>(-3));
@@ -47,13 +49,13 @@ std::pair<std::vector<uint8_t>, size_t> bitsery_serialize()
 	return { buffer, ser.adapter().writtenBytesCount() };
 }
 
-void bitsery_deserialize(std::vector<uint8_t> buffer, size_t written_size)
+void bitsery_deserialize(const std::vector<uint8_t>& buffer, size_t written_size)
 {
 	using InputAdapter = bitsery::InputBufferAdapter<std::vector<uint8_t>>;
 
 	bitsery::Deserializer<InputAdapter> des(buffer.begin(), written_size);
 
-	for (int i = 0; i < 1000000; i++)
+	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
 		auto res = false;
 		des.boolValue(res);
@@ -84,7 +86,7 @@ std::vector<uint8_t> binary_buffer_serialize()
 {
 	auto ser = BinaryBuffer();
 
-	for (int i = 0; i < 1000000; i++)
+	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
 		ser.Write(true);
 		ser.Write(static_cast<int8_t>(-3));
@@ -104,11 +106,11 @@ std::vector<uint8_t> binary_buffer_serialize()
 	return ser.GetBuffer();
 }
 
-void binary_buffer_deserialize(std::vector<uint8_t> buffer)
+void binary_buffer_deserialize(const std::vector<uint8_t>& buffer)
 {
 	auto des = BinaryBuffer(buffer);
 
-	for (int i = 0; i < 1000000; i++)
+	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
 		auto res = false;
 		des.Read(res);
@@ -135,40 +137,12 @@ void binary_buffer_deserialize(std::vector<uint8_t> buffer)
 	}
 }
 
-struct membuf : std::streambuf
+std::string boost_serialize()
 {
-	membuf(const char* base, size_t size)
-	{
-		auto p(const_cast<char*>(base));
-		this->setg(p, p, p + size);
-	}
-};
+	std::stringstream input_stream;
+	auto ser = boost::archive::binary_oarchive(input_stream, boost::archive::no_header);
 
-struct imemstream : virtual membuf, std::istream
-{
-	imemstream(const char* base, size_t size)
-		: membuf(base, size)
-		  , std::istream(static_cast<std::streambuf*>(this))
-	{
-	}
-};
-
-struct omemstream : virtual membuf, std::ostream
-{
-	omemstream(const char* base, size_t size)
-		: membuf(base, size)
-		  , std::ostream(static_cast<std::streambuf*>(this))
-	{
-	}
-};
-
-std::vector<uint8_t> boost_serialize()
-{
-	std::vector<uint8_t> buffer;
-	auto input_stream = imemstream(reinterpret_cast<const char*>(buffer.data()), buffer.size());
-	auto ser = boost::archive::binary_oarchive(input_stream);
-
-	for (int i = 0; i < 1000000; i++)
+	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
 		ser << true;
 		ser << static_cast<int8_t>(-3);
@@ -185,15 +159,15 @@ std::vector<uint8_t> boost_serialize()
 		ser << res2;
 	}
 
-	return buffer;
+	return input_stream.str();
 }
 
-void boost_deserialize(std::vector<uint8_t> buffer)
+void boost_deserialize(const std::string& buffer)
 {
-	auto output_stream = omemstream(reinterpret_cast<const char*>(buffer.data()), buffer.size());
-	auto des = boost::archive::binary_iarchive(output_stream);
+	std::stringstream output_stream(buffer);
+	auto des = boost::archive::binary_iarchive(output_stream, boost::archive::no_header);
 
-	for (int i = 0; i < 1000000; i++)
+	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
 		auto res = false;
 		des >> res;
@@ -225,10 +199,18 @@ int main()
 	{
 		boost::timer::cpu_timer timer;
 		auto [buffer, written_size] = bitsery_serialize();
+		for (int i = 0; i < LOOP_COUNT; i++)
+		{
+			auto [buffer, written_size] = bitsery_serialize();
+		}
 		timer.stop();
 		std::cout << "bitsery size: " << buffer.size() << std::endl;
 		std::cout << "bitsery serialize: " << timer.format();
 		timer = boost::timer::cpu_timer();
+		for (int i = 0; i < LOOP_COUNT; i++)
+		{
+			bitsery_deserialize(buffer, written_size);
+		}
 		bitsery_deserialize(buffer, written_size);
 		timer.stop();
 		std::cout << "bitsery deserialize: " << timer.format();
@@ -237,11 +219,18 @@ int main()
 	{
 		boost::timer::cpu_timer timer;
 		auto buffer = binary_buffer_serialize();
+		for (int i = 0; i < LOOP_COUNT; i++)
+		{
+			auto buffer = binary_buffer_serialize();
+		}
 		timer.stop();
 		std::cout << "binary_buffer size: " << buffer.size() << std::endl;
 		std::cout << "binary_buffer serialize: " << timer.format();
 		timer = boost::timer::cpu_timer();
-		binary_buffer_deserialize(buffer);
+		for (int i = 0; i < LOOP_COUNT; i++)
+		{
+			binary_buffer_deserialize(buffer);
+		}
 		timer.stop();
 		std::cout << "binary_buffer deserialize: " << timer.format();
 	}
@@ -249,11 +238,18 @@ int main()
 	{
 		boost::timer::cpu_timer timer;
 		auto buffer = boost_serialize();
+		for (int i = 0; i < LOOP_COUNT; i++)
+		{
+			auto buffer = boost_serialize();
+		}
 		timer.stop();
 		std::cout << "boost size: " << buffer.size() << std::endl;
 		std::cout << "boost serialize: " << timer.format();
 		timer = boost::timer::cpu_timer();
-		boost_deserialize(buffer);
+		for (int i = 0; i < LOOP_COUNT; i++)
+		{
+			boost_deserialize(buffer);
+		}
 		timer.stop();
 		std::cout << "boost deserialize: " << timer.format();
 	}

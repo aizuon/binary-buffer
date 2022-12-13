@@ -1,9 +1,9 @@
 #pragma once
 #include <cassert>
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <vector>
+#include <mutex>
 #include <boost/endian/conversion.hpp>
 
 #include "Utils.hpp"
@@ -20,39 +20,44 @@ public:
 	BinaryBuffer& operator=(const BinaryBuffer& obj);
 	BinaryBuffer& operator=(BinaryBuffer&& obj) noexcept;
 
-	inline const std::vector<uint8_t>& GetBuffer() const
+	const std::vector<uint8_t>& GetBuffer() const
 	{
 		return Buffer;
 	}
 
-	inline std::vector<uint8_t>& GetWritableBuffer()
+	std::vector<uint8_t>& GetWritableBuffer()
 	{
 		return Buffer;
 	}
 
-	inline uint32_t GetSize() const
+	uint32_t GetSize() const
 	{
 		return Buffer.size();
 	}
 
-	inline uint32_t GetWriteOffset() const
+	uint32_t GetWriteOffset() const
 	{
 		return WriteOffset;
 	}
 
-	inline uint32_t GetReadOffset() const
+	uint32_t GetReadOffset() const
 	{
 		return ReadOffset;
 	}
 
-	inline void GrowTo(uint32_t size)
+	void SetThreadSafety(bool val)
+	{
+		ThreadSafe = val;
+	}
+
+	void GrowTo(uint32_t size)
 	{
 		assert(size > Buffer.size());
 
 		Buffer.resize(size);
 	}
 
-	inline void Reserve(uint32_t size)
+	void Reserve(uint32_t size)
 	{
 		Buffer.reserve(size);
 	}
@@ -64,7 +69,9 @@ public:
 	{
 		static_assert(std::is_arithmetic_v<T>);
 
-		std::scoped_lock lock(Mutex);
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
 
 		if (!Utils::IsLittleEndian)
 		{
@@ -80,7 +87,9 @@ public:
 	template <typename T>
 	void Write(const std::vector<T>& obj)
 	{
-		std::scoped_lock lock(Mutex);
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
 
 		const uint32_t size = obj.size();
 		WriteSize(size);
@@ -96,7 +105,9 @@ public:
 	template <typename T>
 	void WriteRaw(const std::vector<T>& obj)
 	{
-		std::scoped_lock lock(Mutex);
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
 
 		const uint32_t length = obj.size() * sizeof(T);
 		GrowIfNeeded(length);
@@ -117,7 +128,9 @@ public:
 	{
 		static_assert(std::is_arithmetic_v<T>);
 
-		std::scoped_lock lock(Mutex);
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
 
 		const uint32_t length = sizeof(T);
 
@@ -138,7 +151,9 @@ public:
 	template <typename T>
 	bool Read(std::vector<T>& obj)
 	{
-		std::scoped_lock lock(Mutex);
+		std::unique_lock lock(Mutex, std::defer_lock);
+		if (ThreadSafe)
+			lock.lock();
 
 		uint32_t size = 0;
 		if (!ReadSize(size))
@@ -169,6 +184,7 @@ private:
 	uint32_t WriteOffset = 0;
 	uint32_t ReadOffset = 0;
 
+	bool ThreadSafe = false;
 	std::recursive_mutex Mutex;
 
 	static constexpr float BUFFER_GROW_FACTOR = 1.5f;
