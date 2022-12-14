@@ -2,12 +2,14 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClInclude Include="pch.hpp" />
-    <ClInclude Include="BinaryBuffer.hpp" />
+    <ClInclude Include="BinaryBufferWriter.hpp" />
     <ClInclude Include="Utils.hpp" />
+    <ClInclude Include="BinaryBufferReader.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
-    <ClCompile Include="BinaryBuffer.cpp" />
+    <ClCompile Include="BinaryBufferWriter.cpp" />
     <ClCompile Include="Utils.cpp" />
+    <ClCompile Include="BinaryBufferReader.cpp" />
   </ItemGroup>
 </Project>

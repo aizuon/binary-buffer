@@ -6,7 +6,8 @@
 #include <istream>
 #include <boost/timer/timer.hpp>
 
-#include "../binary-buffer/BinaryBuffer.hpp"
+#include "../binary-buffer/BinaryBufferWriter.hpp"
+#include "../binary-buffer/BinaryBufferReader.hpp"
 
 #include <bitsery/bitsery.h>
 #include <bitsery/adapter/buffer.h>
@@ -22,9 +23,10 @@
 #define SER_LOOP_COUNT 1'000'000
 #define LOOP_COUNT 100
 
-std::vector<uint8_t> binary_buffer_serialize()
+auto binary_buffer_serialize()
 {
-	auto ser = BinaryBuffer();
+	std::vector<uint8_t> buffer;
+	auto ser = BinaryBufferWriter(buffer);
 
 	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
@@ -43,12 +45,12 @@ std::vector<uint8_t> binary_buffer_serialize()
 		ser.Write(res2);
 	}
 
-	return ser.GetBuffer();
+	return buffer;
 }
 
 void binary_buffer_deserialize(const std::vector<uint8_t>& buffer)
 {
-	auto des = BinaryBuffer(buffer);
+	auto des = BinaryBufferReader(buffer);
 
 	for (int i = 0; i < SER_LOOP_COUNT; i++)
 	{
@@ -77,7 +79,7 @@ void binary_buffer_deserialize(const std::vector<uint8_t>& buffer)
 	}
 }
 
-std::pair<std::vector<uint8_t>, size_t> bitsery_serialize()
+auto bitsery_serialize()
 {
 	std::vector<uint8_t> buffer;
 	auto ser = bitsery::Serializer<bitsery::OutputBufferAdapter<std::vector<uint8_t>>>(buffer);
@@ -99,7 +101,7 @@ std::pair<std::vector<uint8_t>, size_t> bitsery_serialize()
 		ser.container1b(res2, res2.size());
 	}
 
-	return { buffer, ser.adapter().writtenBytesCount() };
+	return std::make_pair(buffer, ser.adapter().writtenBytesCount());
 }
 
 void bitsery_deserialize(const std::vector<uint8_t>& buffer, size_t written_size)
@@ -133,7 +135,7 @@ void bitsery_deserialize(const std::vector<uint8_t>& buffer, size_t written_size
 	}
 }
 
-std::string boost_serialize()
+auto boost_serialize()
 {
 	std::stringstream input_stream;
 	auto ser = boost::archive::binary_oarchive(input_stream);
