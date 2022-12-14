@@ -54,4 +54,4 @@ TODO
 ## TODO
 
 - Custom object serialization extensions
-- std::vector<bool> support
+- std::vector\<bool\> support
